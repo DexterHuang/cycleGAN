@@ -150,11 +150,19 @@ def plotLoss_new():
     plt.close()
 
 def saveModels(epoch, dataset, genA2B, genB2A, discA, discB):
-    genA2B.save(f'models/{dataset}_generatorA2B_epoch_%d.h5' % epoch)
-    genB2A.save(f'models/{dataset}_generatorB2A_epoch_%d.h5' % epoch)
-    discA.save(f'models/{dataset}_discriminatorA_epoch_%d.h5' % epoch)
-    discB.save(f'models/{dataset}_discriminatorB_epoch_%d.h5' % epoch)
+    genA2B.save(f'models/{dataset}_{epoch}_generatorA2B_epoch.h5')
+    genB2A.save(f'models/{dataset}_{epoch}_generatorB2A_epoch.h5')
+    discA.save(f'models/{dataset}_{epoch}_discriminatorA_epoch.h5')
+    discB.save(f'models/{dataset}_{epoch}_discriminatorB_epoch.h5')
 
+def loadModels(epoch, dataset, genA2B, genB2A, discA, discB):
+    try:
+        genA2B.load_weights(f'models/{dataset}_{epoch}_generatorA2B_epoch.h5')
+        genB2A.load_weights(f'models/{dataset}_{epoch}_generatorB2A_epoch.h5')
+        discA.load_weights(f'models/{dataset}_{epoch}_discriminatorA_epoch.h5')
+        discB.load_weights(f'models/{dataset}_{epoch}_discriminatorB_epoch.h5')
+    except Exception as e:
+        print(f"Failed to load model: {e}")
 
 # Training
 
@@ -184,7 +192,8 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
 
     #Retrieve components and save model before training, to preserve weights initialization
     disc_a, disc_b, gen_a2b, gen_b2a = components(w, h, pseudounet=use_pseudounet, unet=use_unet, plot=plot_models)
-    saveModels(0, dataset ,gen_a2b, gen_b2a, disc_a, disc_b)
+    loadModels('latest',  dataset ,gen_a2b, gen_b2a, disc_a, disc_b)
+    # saveModels(0, dataset ,gen_a2b, gen_b2a, disc_a, disc_b)
 
     #Initialize fake images pools
     pool_a2b = []
@@ -241,6 +250,8 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
     discriminator_trainer = K.function([true_a, true_b, fake_pool_a, fake_pool_b], [disc_a_loss/2, disc_b_loss/2], discriminator_updater)
 
     epoch_counter = 1
+
+    plotGeneratedImages(epoch_counter, x_test_a, x_test_b, gen_a2b, gen_b2a)
 
     # Start training
     for e in range(1, epochs + 1):
@@ -340,6 +351,9 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
         if end_of_epoch_callback is not None:
             end_of_epoch_callback()
 
+def end_of_epoch_callback():
+    print("potato")
 
 if __name__ == '__main__':
-    train(200, 1, "yandex", lr, use_decay=True, use_pseudounet=False, use_unet=False, plot_models=False)
+    train(200, 1, "n-yandex", lr, use_decay=True, use_pseudounet=False, use_unet=False, plot_models=False,
+          end_of_epoch_callback=end_of_epoch_callback)
