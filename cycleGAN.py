@@ -11,15 +11,16 @@ import random
 
 from models import components, mae_loss, mse_loss
 
-
 # Avoid crash on non-X linux sessions (tipically servers) when plotting images
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import gc
 
 # Images size
-w = 256
-h = 256
+w = 512
+h = 512
 
 # Cyclic consistency factor
 
@@ -38,32 +39,33 @@ K.set_image_dim_ordering('th')
 disc_a_history = []
 disc_b_history = []
 
-gen_a2b_history = {'bc':[], 'mae':[]} 
-gen_b2a_history = {'bc':[], 'mae':[]}
+gen_a2b_history = {'bc': [], 'mae': []}
+gen_b2a_history = {'bc': [], 'mae': []}
 
 gen_b2a_history_new = []
 gen_a2b_history_new = []
 cycle_history = []
 
+model_save_folder = "/content/drive/My Drive/Data"
+
+
 # Data loading
 
 def loadImage(path, h, w):
-    
     '''Load single image from specified path'''
     img = image.load_img(path)
-    img = img.resize((w,h))
+    img = img.resize((w, h))
     x = image.img_to_array(img)
     return x
 
 
 def loadImagesFromDataset(h, w, dataset, use_hdf5=False):
-
-    '''Return a tuple (trainA, trainB, testA, testB) 
+    '''Return a tuple (trainA, trainB, testA, testB)
     containing numpy arrays populated from the
      test and train set for each part of the cGAN'''
 
     if (use_hdf5):
-        path="./datasets/processed/"+dataset+"_data.h5"
+        path = "./datasets/processed/" + dataset + "_data.h5"
         data = []
         print('\n', '-' * 15, 'Loading data from dataset', dataset, '-' * 15)
         with h5py.File(path, "r") as hf:
@@ -73,7 +75,7 @@ def loadImagesFromDataset(h, w, dataset, use_hdf5=False):
         return (set_data for set_data in data)
 
     else:
-        path = "./datasets/"+dataset
+        path = "./datasets/" + dataset
         print(path)
         train_a = glob.glob(path + "/trainA/*.jpg")
         train_b = glob.glob(path + "/trainB/*.jpg")
@@ -99,13 +101,11 @@ def loadImagesFromDataset(h, w, dataset, use_hdf5=False):
         ts_b = np.array([loadImage(p, h, w) for p in tqdm(test_b)])
 
     return tr_a, tr_b, ts_a, ts_b
-    
 
 
 # Create a wall of generated images
 
 def plotGeneratedImages(epoch, set_a, set_b, generator_a2b, generator_b2a, examples=6):
-    
     true_batch_a = set_a[np.random.randint(0, set_a.shape[0], size=examples)]
     true_batch_b = set_b[np.random.randint(0, set_b.shape[0], size=examples)]
 
@@ -114,23 +114,23 @@ def plotGeneratedImages(epoch, set_a, set_b, generator_a2b, generator_b2a, examp
     cycle_a = generator_b2a.predict(generated_a2b)
     generated_b2a = generator_b2a.predict(true_batch_b)
     cycle_b = generator_a2b.predict(generated_b2a)
-    
+
     k = 0
 
     # Allocate figure
-    plt.figure(figsize=(w/10, h/10))
+    plt.figure(figsize=(w / 10, h / 10))
 
     for output in [true_batch_a, generated_a2b, cycle_a, true_batch_b, generated_b2a, cycle_b]:
-        output = (output+1.0)/2.0
+        output = (output + 1.0) / 2.0
         for i in range(output.shape[0]):
-            plt.subplot(examples, examples, k*examples +(i + 1))
+            plt.subplot(examples, examples, k * examples + (i + 1))
             img = output[i].transpose(1, 2, 0)  # Using (ch, h, w) scheme needs rearranging for plt to (h, w, ch)
-            #print(img.shape)
+            # print(img.shape)
             plt.imshow(img)
             plt.axis('off')
         plt.tight_layout()
         k += 1
-    plt.savefig("images/epoch"+str(epoch)+".png")
+    plt.savefig("images/epoch" + str(epoch) + ".png")
     plt.close()
 
 
@@ -142,33 +142,37 @@ def plotLoss_new():
     plt.plot(disc_b_history, label='Discriminator B loss')
     plt.plot(gen_a2b_history_new, label='Generator a2b loss')
     plt.plot(gen_b2a_history_new, label='Generator b2a loss')
-    #plt.plot(cycle_history, label="Cyclic loss")
+    # plt.plot(cycle_history, label="Cyclic loss")
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
     plt.savefig('images/cyclegan_loss.png')
     plt.close()
 
+
 def saveModels(epoch, dataset, genA2B, genB2A, discA, discB):
-    genA2B.save(f'models/{dataset}_{epoch}_generatorA2B_epoch.h5')
-    genB2A.save(f'models/{dataset}_{epoch}_generatorB2A_epoch.h5')
-    discA.save(f'models/{dataset}_{epoch}_discriminatorA_epoch.h5')
-    discB.save(f'models/{dataset}_{epoch}_discriminatorB_epoch.h5')
+    print("Saving Model...")
+    genA2B.save(f'{model_save_folder}/{dataset}_{epoch}_{w}x{h}_generatorA2B.h5')
+    genB2A.save(f'{model_save_folder}/{dataset}_{epoch}_{w}x{h}_generatorB2A.h5')
+    discA.save(f'{model_save_folder}/{dataset}_{epoch}_{w}x{h}_discriminatorA.h5')
+    discB.save(f'{model_save_folder}/{dataset}_{epoch}_{w}x{h}_discriminatorBh.h5')
+    print("Model Saved!")
+
 
 def loadModels(epoch, dataset, genA2B, genB2A, discA, discB):
     try:
-        genA2B.load_weights(f'models/{dataset}_{epoch}_generatorA2B_epoch.h5')
-        genB2A.load_weights(f'models/{dataset}_{epoch}_generatorB2A_epoch.h5')
-        discA.load_weights(f'models/{dataset}_{epoch}_discriminatorA_epoch.h5')
-        discB.load_weights(f'models/{dataset}_{epoch}_discriminatorB_epoch.h5')
+        genA2B.load_weights(f'{model_save_folder}/{dataset}_{epoch}_{w}x{h}_generatorA2B.h5')
+        genB2A.load_weights(f'{model_save_folder}/{dataset}_{epoch}_{w}x{h}_generatorB2A.h5')
+        discA.load_weights(f'{model_save_folder}/{dataset}_{epoch}_{w}x{h}_discriminatorA.h5')
+        discB.load_weights(f'{model_save_folder}/{dataset}_{epoch}_{w}x{h}_discriminatorB.h5')
     except Exception as e:
         print(f"Failed to load model: {e}")
+
 
 # Training
 
 def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=False, use_decay=False, plot_models=True,
           end_of_epoch_callback=None):
-
     if end_of_epoch_callback is not None:
         end_of_epoch_callback()
 
@@ -190,12 +194,12 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
     print('Batch size:', batch_size)
     print('Batches per epoch: ', batchCount, "\n")
 
-    #Retrieve components and save model before training, to preserve weights initialization
+    # Retrieve components and save model before training, to preserve weights initialization
     disc_a, disc_b, gen_a2b, gen_b2a = components(w, h, pseudounet=use_pseudounet, unet=use_unet, plot=plot_models)
-    loadModels('latest',  dataset ,gen_a2b, gen_b2a, disc_a, disc_b)
-    # saveModels(0, dataset ,gen_a2b, gen_b2a, disc_a, disc_b)
+    loadModels('latest', dataset, gen_a2b, gen_b2a, disc_a, disc_b)
+    saveModels(0, dataset, gen_a2b, gen_b2a, disc_a, disc_b)
 
-    #Initialize fake images pools
+    # Initialize fake images pools
     pool_a2b = []
     pool_b2a = []
 
@@ -247,7 +251,8 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
 
     # Define trainers
     generator_trainer = K.function([true_a, true_b], [gen_a2b_loss, gen_b2a_loss, cyclic_loss], generator_updater)
-    discriminator_trainer = K.function([true_a, true_b, fake_pool_a, fake_pool_b], [disc_a_loss/2, disc_b_loss/2], discriminator_updater)
+    discriminator_trainer = K.function([true_a, true_b, fake_pool_a, fake_pool_b], [disc_a_loss / 2, disc_b_loss / 2],
+                                       discriminator_updater)
 
     epoch_counter = 1
 
@@ -255,17 +260,17 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
 
     # Start training
     for e in range(1, epochs + 1):
-        print('\n','-'*15, 'Epoch %d' % e, '-'*15)
+        print('\n', '-' * 15, 'Epoch %d' % e, '-' * 15)
+        gc.collect()
 
-        #Learning rate decay
+        # Learning rate decay
         if use_decay and (epoch_counter > 100):
-            lr -= baselr/100
+            lr -= baselr / 100
             adam_disc.lr = lr
             adam_gen.lr = lr
 
-
         # Initialize progbar and batch counter
-        #progbar = generic_utils.Progbar(batchCount)
+        # progbar = generic_utils.Progbar(batchCount)
 
         np.random.shuffle(x_train_a)
         np.random.shuffle(x_train_b)
@@ -274,13 +279,13 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
         for i in trange(int(batchCount)):
 
             # Select true images for training
-            #true_batch_a = x_train_a[np.random.randint(0, x_train_a.shape[0], size=batch_size)]
-            #true_batch_b = x_train_b[np.random.randint(0, x_train_b.shape[0], size=batch_size)]
+            # true_batch_a = x_train_a[np.random.randint(0, x_train_a.shape[0], size=batch_size)]
+            # true_batch_b = x_train_b[np.random.randint(0, x_train_b.shape[0], size=batch_size)]
 
-            true_batch_a = x_train_a[i*batch_size:i*batch_size+batch_size]
-            true_batch_b = x_train_b[i*batch_size:i*batch_size+batch_size]
+            true_batch_a = x_train_a[i * batch_size:i * batch_size + batch_size]
+            true_batch_b = x_train_b[i * batch_size:i * batch_size + batch_size]
 
-            # Fake images pool 
+            # Fake images pool
             a2b = gen_a2b.predict(true_batch_a)
             b2a = gen_b2a.predict(true_batch_b)
 
@@ -301,7 +306,7 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
                         tmp_a2b.append(tmp)
                     else:
                         tmp_a2b.append(element)
-            
+
             for element in b2a:
                 if len(pool_b2a) < 50:
                     pool_b2a.append(element)
@@ -309,7 +314,7 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
                 else:
                     p = random.uniform(0, 1)
 
-                    if p >0.5:
+                    if p > 0.5:
                         index = random.randint(0, 49)
                         tmp = np.copy(pool_b2a[index])
                         pool_b2a[index] = element
@@ -339,20 +344,22 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
         gen_a2b_history_new.append(gen_a2b_err)
         gen_b2a_history_new.append(gen_b2a_err)
 
-        #cycle_history.append(cyclic_err[0])
+        # cycle_history.append(cyclic_err[0])
         plotLoss_new()
 
         plotGeneratedImages(epoch_counter, x_test_a, x_test_b, gen_a2b, gen_b2a)
 
-        saveModels(epoch_counter,dataset ,gen_a2b, gen_b2a, disc_a, disc_b)
+        saveModels(epoch_counter, dataset, gen_a2b, gen_b2a, disc_a, disc_b)
 
         epoch_counter += 1
 
         if end_of_epoch_callback is not None:
             end_of_epoch_callback()
 
+
 def end_of_epoch_callback():
     print("potato")
+
 
 if __name__ == '__main__':
     train(200, 1, "n-yandex", lr, use_decay=True, use_pseudounet=False, use_unet=False, plot_models=False,
