@@ -2,25 +2,24 @@ import numpy as np
 from tqdm import trange, tqdm
 import glob
 import h5py
-
 from keras.optimizers import Adam
 from keras import backend as K
 from keras.preprocessing import image
-
 import random
-
 from models import components, mae_loss, mse_loss
-
+import scipy.misc
 # Avoid crash on non-X linux sessions (tipically servers) when plotting images
 import matplotlib
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import gc
+import time
+from glob import glob
 
 # Images size
-w = 512
-h = 512
+w = 256
+h = 256
 
 # Cyclic consistency factor
 
@@ -46,18 +45,20 @@ gen_b2a_history_new = []
 gen_a2b_history_new = []
 cycle_history = []
 
-model_save_folder = "/content/drive/My Drive/Data"
+model_save_folder = "models"
 
 
 # Data loading
 
 def loadImage(path, h, w):
     '''Load single image from specified path'''
+    if path in cache:
+      return cache[path]
     img = image.load_img(path)
     img = img.resize((w, h))
     x = image.img_to_array(img)
+    cache[path] = x
     return x
-
 
 def loadImagesFromDataset(h, w, dataset, use_hdf5=False):
     '''Return a tuple (trainA, trainB, testA, testB)
@@ -101,11 +102,70 @@ def loadImagesFromDataset(h, w, dataset, use_hdf5=False):
         ts_b = np.array([loadImage(p, h, w) for p in tqdm(test_b)])
 
     return tr_a, tr_b, ts_a, ts_b
+cache = dict()
+n_batches = -1
+current_milli_time = lambda: int(round(time.time() * 1000))
+def load_batch(dataset, batch_size=1, is_testing=False, break_img=False):
+    data_type = "train" if not is_testing else "test"
+    a = f'./datasets/{dataset}/{data_type}A/*'
+    b = f'./datasets/{dataset}/{data_type}B/*'
+    path_A = None
+    path_B = None
+    if a in cache:
+        path_A = cache[a]
+    else:
+        path_A = glob(a)
+
+    if b in cache:
+        path_B = cache[b]
+    else:
+        path_B = glob(b)
+
+    n_batches = int(min(len(path_A), len(path_B)) / batch_size)
+    total_samples = n_batches * batch_size
+
+    # Sample n_batches * batch_size from each path list so that model sees all
+    # samples from both domains
+    path_A = np.random.choice(path_A, total_samples, replace=False)
+    path_B = np.random.choice(path_B, total_samples, replace=False)
+
+    for i in range(n_batches-1):
+        start_time = current_milli_time()
+        batch_A = path_A[i*batch_size:(i+1)*batch_size]
+        batch_B = path_B[i*batch_size:(i+1)*batch_size]
+        imgs_A, imgs_B = [], []
+        for img_A, img_B in zip(batch_A, batch_B):
+            img_B = load_img2(img_B, break_img=break_img)
+            img_A = load_img2(img_A, break_img=break_img)
 
 
+            imgs_A.append(img_A)
+            imgs_B.append(img_B)
+
+        imgs_A = np.array(imgs_A)/127.5 - 1.
+        imgs_B = np.array(imgs_B)/127.5 - 1.
+
+        yield imgs_A, imgs_B, current_milli_time() - start_time
+
+def load_img2( path, break_img):
+    name = path
+    if name in cache:
+        img = cache[name]
+    else:
+        img = loadImage(path, h , w)
+        cache[name] = img
+    return img
 # Create a wall of generated images
+def plotGeneratedImages(epoch, dataset, batch_size, generator_a2b, generator_b2a, examples=6):
 
-def plotGeneratedImages(epoch, set_a, set_b, generator_a2b, generator_b2a, examples=6):
+    a1, b1, t = next(load_batch(dataset, batch_size, is_testing=True, ))
+    a2, b2, t = next(load_batch(dataset, batch_size, is_testing=True, ))
+    a3, b3, t = next(load_batch(dataset, batch_size, is_testing=True, ))
+    a4, b4, t = next(load_batch(dataset, batch_size, is_testing=True, ))
+    a5, b5, t = next(load_batch(dataset, batch_size, is_testing=True, ))
+    a6, b6, t = next(load_batch(dataset, batch_size, is_testing=True, ))
+    set_a= np.array([a1[0],a2[0],a3[0],a4[0],a5[0],a6[0]])
+    set_b= np.array([b1[0],b2[0],b3[0],b4[0],b5[0],b6[0]])
     true_batch_a = set_a[np.random.randint(0, set_a.shape[0], size=examples)]
     true_batch_b = set_b[np.random.randint(0, set_b.shape[0], size=examples)]
 
@@ -177,15 +237,14 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
         end_of_epoch_callback()
 
     # Load data and normalize
-    x_train_a, x_train_b, x_test_a, x_test_b = loadImagesFromDataset(h, w, dataset, use_hdf5=False)
+    # x_train_a, x_train_b, x_test_a, x_test_b = loadImagesFromDataset(h, w, dataset, use_hdf5=False)
+    # x_train_a = (x_train_a.astype(np.float32) - 127.5) / 127.5
+    # x_train_b = (x_train_b.astype(np.float32) - 127.5) / 127.5
+    # x_test_a = (x_test_a.astype(np.float32) - 127.5) / 127.5
+    # x_test_b = (x_test_b.astype(np.float32) - 127.5) / 127.5
 
-    x_train_a = (x_train_a.astype(np.float32) - 127.5) / 127.5
-    x_train_b = (x_train_b.astype(np.float32) - 127.5) / 127.5
-    x_test_a = (x_test_a.astype(np.float32) - 127.5) / 127.5
-    x_test_b = (x_test_b.astype(np.float32) - 127.5) / 127.5
-
-    batchCount_a = x_train_a.shape[0] / batch_size
-    batchCount_b = x_train_b.shape[0] / batch_size
+    batchCount_a = n_batches
+    batchCount_b = n_batches
 
     # Train on same image amount, would be best to have even sets
     batchCount = min([batchCount_a, batchCount_b])
@@ -196,8 +255,11 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
 
     # Retrieve components and save model before training, to preserve weights initialization
     disc_a, disc_b, gen_a2b, gen_b2a = components(w, h, pseudounet=use_pseudounet, unet=use_unet, plot=plot_models)
+
+
+    # LOAD AND SAVE ====
     loadModels('latest', dataset, gen_a2b, gen_b2a, disc_a, disc_b)
-    saveModels(0, dataset, gen_a2b, gen_b2a, disc_a, disc_b)
+    # saveModels('latest', dataset, gen_a2b, gen_b2a, disc_a, disc_b)
 
     # Initialize fake images pools
     pool_a2b = []
@@ -256,7 +318,7 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
 
     epoch_counter = 1
 
-    plotGeneratedImages(epoch_counter, x_test_a, x_test_b, gen_a2b, gen_b2a)
+    plotGeneratedImages(epoch_counter,dataset, batch_size,  gen_a2b, gen_b2a)
 
     # Start training
     for e in range(1, epochs + 1):
@@ -272,18 +334,20 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
         # Initialize progbar and batch counter
         # progbar = generic_utils.Progbar(batchCount)
 
-        np.random.shuffle(x_train_a)
-        np.random.shuffle(x_train_b)
+        # np.random.shuffle(x_train_a)
+        # np.random.shuffle(x_train_b)
         print(f"Batch count: {batchCount}")
         # Cycle through batches
-        for i in trange(int(batchCount)):
+        for i in trange(int(1000)):
 
             # Select true images for training
             # true_batch_a = x_train_a[np.random.randint(0, x_train_a.shape[0], size=batch_size)]
             # true_batch_b = x_train_b[np.random.randint(0, x_train_b.shape[0], size=batch_size)]
 
-            true_batch_a = x_train_a[i * batch_size:i * batch_size + batch_size]
-            true_batch_b = x_train_b[i * batch_size:i * batch_size + batch_size]
+            true_batch_a, true_batch_b, load_time = next(load_batch(dataset, batch_size, is_testing=False, ))
+            print(f"Load time: {load_time}")
+            # true_batch_a = x_train_a[i * batch_size:i * batch_size + batch_size]
+            # true_batch_b = x_train_b[i * batch_size:i * batch_size + batch_size]
 
             # Fake images pool
             a2b = gen_a2b.predict(true_batch_a)
@@ -347,9 +411,10 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
         # cycle_history.append(cyclic_err[0])
         plotLoss_new()
 
-        plotGeneratedImages(epoch_counter, x_test_a, x_test_b, gen_a2b, gen_b2a)
+        plotGeneratedImages(epoch_counter, dataset, batch_size,  gen_a2b, gen_b2a)
 
         saveModels(epoch_counter, dataset, gen_a2b, gen_b2a, disc_a, disc_b)
+        saveModels('latest', dataset, gen_a2b, gen_b2a, disc_a, disc_b)
 
         epoch_counter += 1
 
@@ -364,3 +429,4 @@ def end_of_epoch_callback():
 if __name__ == '__main__':
     train(200, 1, "n-yandex", lr, use_decay=True, use_pseudounet=False, use_unet=False, plot_models=False,
           end_of_epoch_callback=end_of_epoch_callback)
+# tensorflowjs_converter --input_format keras models/n-yandex_latest_256x256_generatorA2B.h5 out/
