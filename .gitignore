@@ -1,9 +1,0 @@
-
-\.DS_Store
-.idea
-__pycache__
-datasets
-images
-models/*
-result_samples/*
-
