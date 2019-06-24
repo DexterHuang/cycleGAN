@@ -161,6 +161,9 @@ def saveModels(epoch, dataset, genA2B, genB2A, discA, discB):
 def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=False, use_decay=False, plot_models=True,
           end_of_epoch_callback=None):
 
+    if end_of_epoch_callback is not None:
+        end_of_epoch_callback()
+
     # Load data and normalize
     x_train_a, x_train_b, x_test_a, x_test_b = loadImagesFromDataset(h, w, dataset, use_hdf5=False)
 
