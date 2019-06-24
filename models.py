@@ -10,7 +10,7 @@ import tensorflow as tf
 from keras import backend as K
 
 from residual import Residual
-from unet_generator import generator_unet_deconv
+# from unet_generator import generator_unet_deconv
 
 import numpy as np
 
@@ -242,10 +242,10 @@ def components(w, h, pseudounet=False, unet=False, plot=True):
 
     if unet:
         print('\n Using UNet Generator model')
-        gen_a2b = generator_unet_deconv((3, w, h), batch_size, model_name="_A2B")
-        gen_b2a = generator_unet_deconv((3, w, h), batch_size, model_name="_B2A")
-        if plot:
-            plot_model(gen_a2b, to_file='./unet_generator.png', show_shapes=True)
+        # gen_a2b = generator_unet_deconv((3, w, h), batch_size, model_name="_A2B")
+        # gen_b2a = generator_unet_deconv((3, w, h), batch_size, model_name="_B2A")
+        # if plot:
+        #     plot_model(gen_a2b, to_file='./unet_generator.png', show_shapes=True)
     elif pseudounet:
         print('\n Using pseudoUNet Generator model')
         gen_a2b = PseudoUnet("_A2B", w, h)

@@ -75,10 +75,10 @@ def loadImagesFromDataset(h, w, dataset, use_hdf5=False):
     else:
         path = "./datasets/"+dataset
         print(path)
-        train_a = glob.glob(path + "/trainA/*.png")
-        train_b = glob.glob(path + "/trainB/*.png")
-        test_a = glob.glob(path + "/testA/*.png")
-        test_b = glob.glob(path + "/testB/*.png")
+        train_a = glob.glob(path + "/trainA/*.jpg")
+        train_b = glob.glob(path + "/trainB/*.jpg")
+        test_a = glob.glob(path + "/testA/*.jpg")
+        test_b = glob.glob(path + "/testB/*.jpg")
 
         print("Import trainA")
         if dataset == "nike2adidas" or ("adiedges" in dataset):
@@ -149,11 +149,11 @@ def plotLoss_new():
     plt.savefig('images/cyclegan_loss.png')
     plt.close()
 
-def saveModels(epoch, genA2B, genB2A, discA, discB):
-    genA2B.save('models/generatorA2B_epoch_%d.h5' % epoch)
-    genB2A.save('models/generatorB2A_epoch_%d.h5' % epoch)
-    discA.save('models/discriminatorA_epoch_%d.h5' % epoch)
-    discB.save('models/discriminatorB_epoch_%d.h5' % epoch)
+def saveModels(epoch, dataset, genA2B, genB2A, discA, discB):
+    genA2B.save(f'models/{dataset}_generatorA2B_epoch_%d.h5' % epoch)
+    genB2A.save(f'models/{dataset}_generatorB2A_epoch_%d.h5' % epoch)
+    discA.save(f'models/{dataset}_discriminatorA_epoch_%d.h5' % epoch)
+    discB.save(f'models/{dataset}_discriminatorB_epoch_%d.h5' % epoch)
 
 
 # Training
@@ -180,7 +180,7 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
 
     #Retrieve components and save model before training, to preserve weights initialization
     disc_a, disc_b, gen_a2b, gen_b2a = components(w, h, pseudounet=use_pseudounet, unet=use_unet, plot=plot_models)
-    saveModels(0, gen_a2b, gen_b2a, disc_a, disc_b)
+    saveModels(0, dataset ,gen_a2b, gen_b2a, disc_a, disc_b)
 
     #Initialize fake images pools
     pool_a2b = []
@@ -254,7 +254,7 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
 
         np.random.shuffle(x_train_a)
         np.random.shuffle(x_train_b)
-
+        print(f"Batch count: {batchCount}")
         # Cycle through batches
         for i in trange(int(batchCount)):
 
@@ -329,11 +329,10 @@ def train(epochs, batch_size, dataset, baselr, use_pseudounet=False, use_unet=Fa
 
         plotGeneratedImages(epoch_counter, x_test_a, x_test_b, gen_a2b, gen_b2a)
 
-        if epoch_counter > 150:
-            saveModels(epoch_counter, gen_a2b, gen_b2a, disc_a, disc_b)
+        saveModels(epoch_counter,dataset ,gen_a2b, gen_b2a, disc_a, disc_b)
 
         epoch_counter += 1
 
 
 if __name__ == '__main__':
-    train(200, 1, "horse2zebra", lr, use_decay=True, use_pseudounet=False, use_unet=False, plot_models=False)
+    train(200, 1, "nude-yandex", lr, use_decay=True, use_pseudounet=False, use_unet=False, plot_models=False)
